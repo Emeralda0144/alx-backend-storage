@@ -1,36 +1,24 @@
 #!/usr/bin/env python3
-"""Implementing an expiring web cache and tracker"""
-import requests
+'''A module with tools for request caching and tracking.
+'''
 import redis
-from functools import wraps
-from typing import Callable
+import requests
+from datetime import timedelta
 
 
-_redis = redis.Redis()
-
-
-def count_request(method: Callable) -> Callable:
-    """Count number of request sent to a URL"""
-
-    @wraps(method)
-    def wrapper(*args, **kwargs):
-        """Wrapper function for decorator"""
-        url = str(*args)
-        _redis.incr("count:{}".format(url))
-        cache = _redis.get("count:{}".format(url))
-
-        if cache:
-            return cache.decode('utf-8')
-        else:
-            html = method(url)
-            _redis.setex("count:".format(url), 10, html)
-        return html
-
-    return wrapper
-
-
-@count_request
 def get_page(url: str) -> str:
-    """Obtain HTML content through URL"""
-    res = requests.get(url)
-    return res.text
+    '''Returns the content of a URL after caching the request's response,
+    and tracking the request.
+    '''
+    if url is None or len(url.strip()) == 0:
+        return ''
+    redis_store = redis.Redis()
+    res_key = 'result:{}'.format(url)
+    req_key = 'count:{}'.format(url)
+    result = redis_store.get(res_key)
+    if result is not None:
+        redis_store.incr(req_key)
+        return result
+    result = requests.get(url).content.decode('utf-8')
+    redis_store.setex(res_key, timedelta(seconds=10), result)
+    return result
